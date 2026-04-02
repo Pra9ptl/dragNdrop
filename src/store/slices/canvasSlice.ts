@@ -28,9 +28,10 @@ export const canvasSlice = createSlice({
       id      : string;
       type    : ComponentType;
       parentId: string | null;
+      newIndex?: number;
       position: { x: number; y: number };
     }>) {
-      const { id, type, parentId, position } = action.payload;
+      const { id, type, parentId, newIndex, position } = action.payload;
       state.nodes[id] = {
         id,
         type,
@@ -41,10 +42,17 @@ export const canvasSlice = createSlice({
       };
       if (parentId) {
         // Add this ID to the parent's children list
-        state.nodes[parentId].children.push(id);
+        const children = state.nodes[parentId].children;
+        const safeIndex = typeof newIndex === 'number'
+          ? Math.max(0, Math.min(children.length, newIndex))
+          : children.length;
+        children.splice(safeIndex, 0, id);
       } else {
         // No parent — add to top-level list
-        state.rootIds.push(id);
+        const safeIndex = typeof newIndex === 'number'
+          ? Math.max(0, Math.min(state.rootIds.length, newIndex))
+          : state.rootIds.length;
+        state.rootIds.splice(safeIndex, 0, id);
       }
     },
  
@@ -61,11 +69,16 @@ export const canvasSlice = createSlice({
       const node = state.nodes[id];
       if (!node) return;
  
+      const oldParentId = node.parentId;
+      let oldIndex = -1;
+
       // Step 1: Remove from old parent (or rootIds)
       if (node.parentId) {
         const old = state.nodes[node.parentId];
+        oldIndex = old.children.indexOf(id);
         old.children = old.children.filter(c => c !== id);
       } else {
+        oldIndex = state.rootIds.indexOf(id);
         state.rootIds = state.rootIds.filter(c => c !== id);
       }
  
@@ -75,9 +88,22 @@ export const canvasSlice = createSlice({
  
       // Step 3: Add to new parent (or rootIds)
       if (newParentId) {
-        state.nodes[newParentId].children.splice(newIndex, 0, id);
+        const target = state.nodes[newParentId].children;
+        let safeIndex = Math.max(0, Math.min(target.length, newIndex));
+
+        if (oldParentId === newParentId && oldIndex !== -1 && oldIndex < safeIndex) {
+          safeIndex -= 1;
+        }
+
+        target.splice(safeIndex, 0, id);
       } else {
-        state.rootIds.splice(newIndex, 0, id);
+        let safeIndex = Math.max(0, Math.min(state.rootIds.length, newIndex));
+
+        if (oldParentId === null && oldIndex !== -1 && oldIndex < safeIndex) {
+          safeIndex -= 1;
+        }
+
+        state.rootIds.splice(safeIndex, 0, id);
       }
     },
  

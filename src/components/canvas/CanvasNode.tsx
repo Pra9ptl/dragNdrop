@@ -1,7 +1,7 @@
-import type { CSSProperties, KeyboardEvent, ReactElement } from 'react';
-import { useMemo } from 'react';
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactElement } from 'react';
+import { useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { createSelector } from 'reselect';
 import { deleteNode } from '../../store/slices/canvasSlice';
@@ -85,6 +85,12 @@ function normalizeSizeValue(value: unknown): string | number | undefined {
   return trimmed;
 }
 
+function positiveInt(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : undefined;
+}
+
 function renderNodePreview(type: ComponentType, label: string, variant: string | undefined): ReactElement {
   if (type === 'Button') {
     const buttonStyles = getButtonVariantStyles(variant);
@@ -157,6 +163,8 @@ function renderNodePreview(type: ComponentType, label: string, variant: string |
  
 export function CanvasNode({ id }: Props) {
   const dispatch = useDispatch();
+  const nodeElementRef = useRef<HTMLDivElement | null>(null);
+  const { active } = useDndContext();
  
   // Each CanvasNode creates its own memoized selector
   // so it only re-renders when ITS node changes in Redux
@@ -219,10 +227,46 @@ export function CanvasNode({ id }: Props) {
   const alignItems = node.type === 'Container' && typeof node.props.alignItems === 'string'
     ? node.props.alignItems
     : undefined;
-  const gridTemplateColumns = node.type === 'Container' && typeof node.props.gridTemplateColumns === 'string'
-    ? node.props.gridTemplateColumns
+  const gridRows = node.type === 'Container' ? positiveInt(node.props.gridRows) : undefined;
+  const gridColumns = node.type === 'Container' ? positiveInt(node.props.gridColumns) : undefined;
+  const isGridContainer = node.type === 'Container' && display === 'grid';
+  const activeRect = active?.rect.current.translated ?? active?.rect.current.initial;
+  const resolvedGridColumns = gridColumns ?? 2;
+  const resolvedGridRows = gridRows ?? Math.max(1, Math.ceil((node.children.length + 1) / resolvedGridColumns));
+  const gridTemplateColumns = node.type === 'Container'
+    ? (isGridContainer
+      ? `repeat(${resolvedGridColumns}, minmax(0, 1fr))`
+      : (typeof node.props.gridTemplateColumns === 'string' ? node.props.gridTemplateColumns : undefined))
     : undefined;
+  const gridTemplateRows = node.type === 'Container' && isGridContainer
+    ? `repeat(${resolvedGridRows}, minmax(0, 1fr))`
+    : undefined;
+  const totalCells = Math.max(1, resolvedGridRows * resolvedGridColumns);
+  let hoverCellIndex: number | null = null;
+
+  if (isGridContainer && isOver && activeRect && nodeElementRef.current) {
+    const rect = nodeElementRef.current.getBoundingClientRect();
+    const cellWidth = rect.width / resolvedGridColumns;
+    const cellHeight = rect.height / resolvedGridRows;
+
+    if (cellWidth > 0 && cellHeight > 0) {
+      const centerX = activeRect.left + activeRect.width / 2;
+      const centerY = activeRect.top + activeRect.height / 2;
+      const col = Math.min(
+        resolvedGridColumns - 1,
+        Math.max(0, Math.floor((centerX - rect.left) / cellWidth))
+      );
+      const row = Math.min(
+        resolvedGridRows - 1,
+        Math.max(0, Math.floor((centerY - rect.top) / cellHeight))
+      );
+      hoverCellIndex = Math.min(totalCells - 1, Math.max(0, row * resolvedGridColumns + col));
+    }
+  }
   const isInContainerFlow = parentNode?.type === 'Container';
+  const isInGridContainer = parentNode?.type === 'Container' && parentNode?.props.display === 'grid';
+  const childGridColumn = isInGridContainer && typeof node.props.gridColumn === 'number' ? node.props.gridColumn : undefined;
+  const childGridRow    = isInGridContainer && typeof node.props.gridRow    === 'number' ? node.props.gridRow    : undefined;
  
   // ─── Keyboard handler (A11y) ─────────────────────────
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -236,6 +280,19 @@ export function CanvasNode({ id }: Props) {
     }
     if (e.key === 'Escape') {
       dispatch(selectNode(null));        // deselect on Escape
+    }
+  }
+
+  // ─── Click handler with Ctrl+click drill-down ────────
+  function handleClick(e: MouseEvent<HTMLDivElement>) {
+    if (e.ctrlKey || e.metaKey) {
+      // Ctrl/Cmd+click: select first child if this node has children
+      if (node.children.length > 0) {
+        dispatch(selectNode(node.children[0]));
+      }
+    } else {
+      // Normal click: select this node
+      dispatch(selectNode(id));
     }
   }
  
@@ -263,7 +320,10 @@ export function CanvasNode({ id }: Props) {
     justifyContent,
     alignItems,
     gridTemplateColumns,
+    gridTemplateRows,
     gap,
+    gridColumn : childGridColumn,
+    gridRow    : childGridRow,
     // Blue outline when selected, dashed grey otherwise
     outline      : isSelected ? '2px solid #2E75B6' : '1px dashed #CCCCCC',
     outlineOffset: 3,
@@ -275,6 +335,7 @@ export function CanvasNode({ id }: Props) {
   };
 
   function setCombinedNodeRef(element: HTMLDivElement | null) {
+    nodeElementRef.current = element;
     setNodeRef(element);
     setDroppableRef(element);
   }
@@ -288,17 +349,45 @@ export function CanvasNode({ id }: Props) {
       // ── Accessibility attributes ──────────────────────
       role='button'
       tabIndex={0}
-      aria-label={`${node.type} component. ${isSelected ? 'Selected.' : 'Press Enter to select.'} Press Delete to remove.`}
+      aria-label={`${node.type} component. ${isSelected ? 'Selected.' : 'Press Enter to select.'} ${node.children.length > 0 ? 'Ctrl+click to drill into children.' : ''} Press Delete to remove.`}
       aria-selected={isSelected}
       aria-grabbed={isDragging}
       // ── Event handlers ────────────────────────────────
       onKeyDown={handleKeyDown}
-      onClick={() => dispatch(selectNode(id))}
+      onClick={handleClick}
     >
       <div>
         {renderNodePreview(node.type, label, typeof node.props.variant === 'string' ? node.props.variant : undefined)}
       </div>
-      {isNestTarget && isOver && (
+      {isGridContainer && isOver && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            gridTemplateColumns: `repeat(${resolvedGridColumns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${resolvedGridRows}, minmax(0, 1fr))`,
+            pointerEvents: 'none',
+            zIndex: 2,
+            borderRadius,
+            overflow: 'hidden',
+          }}
+        >
+          {Array.from({ length: totalCells }).map((_, index) => (
+            <div
+              key={index}
+              style={{
+                border: '1px dashed rgba(46,117,182,0.55)',
+                background: index === hoverCellIndex
+                  ? 'rgba(46,117,182,0.24)'
+                  : 'rgba(46,117,182,0.06)',
+                transition: 'background 0.1s ease',
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {isNestTarget && isOver && !isGridContainer && (
         <div
           style={{
             marginTop: 8,

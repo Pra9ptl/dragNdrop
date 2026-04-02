@@ -11,13 +11,19 @@ import { nestingCollisionDetection } from './dnd/collision';
 import { snapToGrid }         from './dnd/modifires';
 import { useCanvasSensors }   from './dnd/sensor';
 import { useUndoRedo }        from './hooks/useUndoRedo';
-import { addNode, moveNode }  from './store/slices/canvasSlice';
+import { addNode, moveNode, updateProps } from './store/slices/canvasSlice';
 import type { RootState }     from './store';
 import type { ComponentType } from './types/schema';
 import { useRef, useState }   from 'react';
 
 const CANVAS_DROP_ID = 'canvas-root';
 const PALETTE_PREFIX = 'palette:';
+
+function asPositiveInt(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : null;
+}
  
 // AppInner is inside the Provider so it can use Redux hooks
 function AppInner() {
@@ -85,6 +91,54 @@ function AppInner() {
     };
   }
 
+  function resolveDropTarget(event: DragEndEvent, overId: string) {
+    const parentId = overId === CANVAS_DROP_ID ? null : overId;
+    const position = getDropPositionForTarget(event, overId);
+
+    if (!parentId) {
+      return { parentId, newIndex: rootIds.length, position, gridCell: null };
+    }
+
+    const parentNode = nodes[parentId];
+    const isGridParent = parentNode?.type === 'Container' && parentNode?.props.display === 'grid';
+
+    if (!parentNode) {
+      return { parentId, newIndex: 0, position, gridCell: null };
+    }
+
+    if (!isGridParent) {
+      return { parentId, newIndex: parentNode.children.length ?? 0, position, gridCell: null };
+    }
+
+    // For grid containers, children are positioned by the grid layout, not absolutely
+    const gridPosition = { x: 0, y: 0 };
+
+    const translatedRect = event.active.rect.current.translated ?? event.active.rect.current.initial;
+    const overRect = event.over?.rect;
+    if (!translatedRect || !overRect) {
+      return { parentId, newIndex: parentNode.children.length, position: gridPosition, gridCell: null };
+    }
+
+    const columns = asPositiveInt(parentNode.props.gridColumns) ?? 2;
+    const rowsFromProps = asPositiveInt(parentNode.props.gridRows);
+    const childCount = parentNode.children.length;
+    const rows = rowsFromProps ?? Math.max(1, Math.ceil((childCount + 1) / columns));
+    const cellWidth = overRect.width / columns;
+    const cellHeight = overRect.height / rows;
+    if (cellWidth <= 0 || cellHeight <= 0) {
+    return { parentId, newIndex: parentNode.children.length, position: gridPosition, gridCell: null };
+    }
+
+    const centerX = translatedRect.left + translatedRect.width / 2;
+    const centerY = translatedRect.top + translatedRect.height / 2;
+    const col = Math.min(columns - 1, Math.max(0, Math.floor((centerX - overRect.left) / cellWidth)));
+    const row = Math.min(rows - 1, Math.max(0, Math.floor((centerY - overRect.top) / cellHeight)));
+    const targetIndex = row * columns + col;
+    const newIndex = Math.min(childCount, Math.max(0, targetIndex));
+
+    return { parentId, newIndex, position: gridPosition, gridCell: { col: col + 1, row: row + 1 } };
+  }
+
   function handleDragMove(event: DragMoveEvent) {
     const { active, delta } = event;
 
@@ -107,13 +161,18 @@ function AppInner() {
     if (activeId.startsWith(PALETTE_PREFIX)) {
       if (over) {
         const overId = String(over.id);
-        const parentId = overId === CANVAS_DROP_ID ? null : overId;
+        const target = resolveDropTarget(event, overId);
+        const newId = crypto.randomUUID();
         dispatch(addNode({
-          id: crypto.randomUUID(),
+          id: newId,
           type: activeId.slice(PALETTE_PREFIX.length) as ComponentType,
-          parentId,
-          position: getDropPositionForTarget(event, overId),
+          parentId: target.parentId,
+          newIndex: target.newIndex,
+          position: target.position,
         }));
+        if (target.gridCell) {
+          dispatch(updateProps({ id: newId, props: { gridColumn: target.gridCell.col, gridRow: target.gridCell.row } }));
+        }
       }
 
       resetActiveDrag(event);
@@ -121,12 +180,18 @@ function AppInner() {
     }
 
     if (over && active.id !== over.id) {
+      const target = resolveDropTarget(event, String(over.id));
       dispatch(moveNode({
         id: activeId,
-        newParentId: over.id === CANVAS_DROP_ID ? null : String(over.id),
-        newIndex: 0,
-        position: getDropPositionForTarget(event, String(over.id)),
+        newParentId: target.parentId,
+        newIndex: target.newIndex,
+        position: target.position,
       }));
+      if (target.gridCell) {
+        dispatch(updateProps({ id: activeId, props: { gridColumn: target.gridCell.col, gridRow: target.gridCell.row } }));
+      } else {
+        dispatch(updateProps({ id: activeId, props: { gridColumn: undefined, gridRow: undefined } }));
+      }
     }
 
     resetActiveDrag(event);

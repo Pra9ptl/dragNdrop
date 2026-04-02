@@ -27,7 +27,11 @@ export interface ComponentProps {
   flexDirection?: 'row' | 'column';
   justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly';
   alignItems?: 'stretch' | 'flex-start' | 'center' | 'flex-end';
+  gridRows?: number;
+  gridColumns?: number;
   gridTemplateColumns?: string;
+  gridColumn?: number;  // child placement: which column in parent grid (1-indexed)
+  gridRow?: number;     // child placement: which row in parent grid (1-indexed)
   [key: string]: unknown; // allows any extra prop
 }
  

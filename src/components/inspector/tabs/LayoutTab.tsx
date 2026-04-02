@@ -11,6 +11,12 @@ export function LayoutTab({ node }: Props) {
   const display = node.props.display === 'flex' || node.props.display === 'grid'
     ? node.props.display
     : 'block';
+  const gridRows = typeof node.props.gridRows === 'number' && node.props.gridRows > 0
+    ? node.props.gridRows
+    : 2;
+  const gridColumns = typeof node.props.gridColumns === 'number' && node.props.gridColumns > 0
+    ? node.props.gridColumns
+    : 2;
 
   return (
     <div className='space-y-3'>
@@ -54,10 +60,26 @@ export function LayoutTab({ node }: Props) {
           size='small'
           select
           value={display}
-          onChange={(event) => dispatch(updateProps({
-            id: node.id,
-            props: { display: event.target.value as 'block' | 'flex' | 'grid' },
-          }))}
+          onChange={(event) => {
+            const newDisplay = event.target.value as 'block' | 'flex' | 'grid';
+            dispatch(updateProps({
+              id: node.id,
+              props: {
+                display: newDisplay,
+                ...(newDisplay === 'flex' ? {
+                  flexDirection: node.props.flexDirection ?? 'row',
+                  gap          : node.props.gap ?? 8,
+                  alignItems   : node.props.alignItems ?? 'stretch',
+                  justifyContent: node.props.justifyContent ?? 'flex-start',
+                } : {}),
+                ...(newDisplay === 'grid' ? {
+                  gridColumns: node.props.gridColumns ?? 2,
+                  gridRows   : node.props.gridRows ?? 2,
+                  gap        : node.props.gap ?? 8,
+                } : {}),
+              },
+            }));
+          }}
         >
           <MenuItem value='block'>block</MenuItem>
           <MenuItem value='flex'>flex</MenuItem>
@@ -132,13 +154,35 @@ export function LayoutTab({ node }: Props) {
       {isContainer && display === 'grid' && (
         <>
           <TextField
-            label='Grid columns'
+            label='Rows'
             fullWidth
             size='small'
-            value={String(node.props.gridTemplateColumns ?? 'repeat(2, minmax(0, 1fr))')}
+            type='number'
+            inputProps={{ min: 1 }}
+            value={String(gridRows)}
             onChange={(event) => dispatch(updateProps({
               id: node.id,
-              props: { gridTemplateColumns: event.target.value },
+              props: {
+                gridRows: event.target.value === ''
+                  ? undefined
+                  : Math.max(1, Number(event.target.value)),
+              },
+            }))}
+          />
+          <TextField
+            label='Columns'
+            fullWidth
+            size='small'
+            type='number'
+            inputProps={{ min: 1 }}
+            value={String(gridColumns)}
+            onChange={(event) => dispatch(updateProps({
+              id: node.id,
+              props: {
+                gridColumns: event.target.value === ''
+                  ? undefined
+                  : Math.max(1, Number(event.target.value)),
+              },
             }))}
           />
           <TextField

@@ -46,9 +46,6 @@ function PaletteItem({ type, index }: { type: ComponentType; index: number }) {
       {...listeners}
     >
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{type}</div>
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-        Drag onto canvas or click to add.
-      </div>
     </button>
   );
 }
@@ -59,7 +56,7 @@ export function ComponentPalette() {
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-        Drag components into the canvas to create them. Current root components: {count}.
+        Drag or click components into the canvas to create them. Current root components: {count}.
       </div>
       {COMPONENT_TYPES.map((type, index) => (
         <PaletteItem key={type} type={type} index={index} />
