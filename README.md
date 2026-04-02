@@ -17,6 +17,7 @@
    - [Collision Detection](#collision-detection)
    - [Snap to Grid](#snap-to-grid)
    - [Drop Handling](#drop-handling)
+   - [Grid Cell Drop Targeting](#grid-cell-drop-targeting)
 7. [Components](#components)
    - [App](#app)
    - [Canvas](#canvas)
@@ -50,8 +51,12 @@ Key capabilities:
 - Drop components inside `Container` to create nested layouts.
 - Edit content, style, and layout properties per component via a right-panel inspector.
 - Container supports `flex`, `grid`, and `block` display modes with display-specific layout controls.
+- Switching display mode auto-applies sensible defaults (gap, direction, columns, etc).
+- Grid containers support configurable rows and columns; dropped components land in the exact cell targeted with visual cell-hover feedback during drag.
+- Existing grid children can be dragged between cells; explicit `grid-column` / `grid-row` CSS is pinned per child so placement is deterministic.
+- `Ctrl+click` (or `Cmd+click` on Mac) on a container drills into its first child.
 - Full undo/redo via `Ctrl+Z` / `Ctrl+Shift+Z`, with up to 50 snapshots.
-- Live JSON schema preview with one-click copy.
+- Live JSON schema preview with one-click copy and fullscreen view (press `Esc` to exit).
 - Real-time FPS performance overlay.
 - Snap-to-grid drag modifier (8px grid).
 
@@ -182,8 +187,8 @@ Holds the full canvas in a flat map `nodes: Record<string, ComponentNode>` plus 
 
 | Action | Payload | What it does |
 |---|---|---|
-| `addNode` | `{ id, type, parentId, position }` | Creates a new node; adds to parent's children or rootIds |
-| `moveNode` | `{ id, newParentId, newIndex, position }` | Unlinks from old parent, relinks to new parent |
+| `addNode` | `{ id, type, parentId, newIndex?, position }` | Creates a new node; inserts at `newIndex` in parent's children or rootIds (appends if omitted) |
+| `moveNode` | `{ id, newParentId, newIndex, position }` | Unlinks from old parent, relinks to new parent at correct index; handles same-parent reorder correctly |
 | `updateProps` | `{ id, props }` | Merges partial props onto the node |
 | `deleteNode` | `id: string` | Recursively deletes node and all descendants |
 
@@ -267,10 +272,25 @@ Applied as a DnD modifier. Quantises the drag transform to **8px increments** in
 
 Two scenarios on drop:
 
-1. **Palette item → canvas/container** — dispatches `addNode` with `parentId` set to the container ID (or `null` for canvas root). Position is calculated relative to the drop target.
-2. **Existing node → new location** — dispatches `moveNode`. Position is computed by subtracting the absolute position of the target parent from the absolute canvas position of the drop.
+1. **Palette item → canvas/container** — dispatches `addNode` with `parentId` set to the container ID (or `null` for canvas root). For grid containers, also dispatches `updateProps` with the computed `gridColumn`/`gridRow` cell.
+2. **Existing node → new location** — dispatches `moveNode`. For grid containers, also dispatches `updateProps` with `gridColumn`/`gridRow`. When moved outside a grid, those props are cleared (`undefined`).
 
 `getAbsoluteCanvasPosition(nodeId)` walks up the parent chain summing `position.x/y` to get the true canvas-relative position of any node.
+
+---
+
+### Grid Cell Drop Targeting
+
+`src/App.tsx` — `resolveDropTarget`
+
+When a component is dropped onto a grid container, the function:
+
+1. Reads the container's `gridColumns` and `gridRows` props (defaulting to 2×2).
+2. Computes the pointer's column and row within the container rect.
+3. Converts that to a child array index (`row * columns + col`).
+4. Returns `{ parentId, newIndex, position: {x:0,y:0}, gridCell: { col, row } }` — with 1-indexed `col`/`row` ready to be applied as CSS `grid-column` / `grid-row`.
+
+Non-grid drops return `gridCell: null` so no cell props are written.
 
 ---
 
@@ -307,17 +327,23 @@ Renders a single node on the canvas. Key behaviours:
 - **Draggable** via `useDraggable` from @dnd-kit.
 - **Droppable** via `useDroppable` — enabled only for `Container` and `Card` types.
 - **Positioning** — uses `position: absolute` for root-level nodes; switches to `position: relative` for children inside a Container so flex/grid layout takes effect.
+- **Grid child placement** — when a node's parent is a grid container, `gridColumn` and `gridRow` CSS props are applied so each child lands exactly in its designated cell regardless of sibling count.
+- **Grid drop overlay** — while dragging over a grid container, an overlay matching the configured rows×columns is rendered with a highlighted target cell that tracks the dragged item's centre in real time.
 - **Rendering** — dispatches a type-aware preview (`Button`, `Input`, `Image`, `Text`, `Card`, `Container`).
-- **Styles** — reads all props directly from Redux node state: `color`, `fontSize`, `backgroundColor`, `border*`, `borderRadius`, `boxShadow`, `padding`, `width`, `height`, `display`, `flexDirection`, `justifyContent`, `alignItems`, `gap`, `gridTemplateColumns`.
+- **Styles** — reads all props directly from Redux node state: `color`, `fontSize`, `backgroundColor`, `border*`, `borderRadius`, `boxShadow`, `padding`, `width`, `height`, `display`, `flexDirection`, `justifyContent`, `alignItems`, `gap`, `gridTemplateColumns`, `gridTemplateRows`.
 - **Children** — recursively renders child nodes via `node.children.map(id => <CanvasNode id={id} />)`.
 - **Selection** — blue 2px outline + shadow ring when selected.
-- **Drop highlight** — dashed blue placeholder shown when dragging over a nestable container.
+- **Drop highlight** — dashed blue placeholder shown when dragging over a nestable non-grid container.
 - **Memoised selector** — each node creates its own `createSelector` instance so only the affected node re-renders on update.
 
 **Keyboard support** on each node:
 - `Enter` / `Space` — select
 - `Delete` / `Backspace` — delete
 - `Escape` — deselect
+
+**Mouse support:**
+- Normal click — select this node
+- `Ctrl+click` / `Cmd+click` — if node has children, select the first child (drill-down)
 
 ---
 
@@ -404,6 +430,10 @@ Available for all component types. Container-specific controls appear based on t
 
 **Container only — Display selector:** `block` / `flex` / `grid`
 
+Switching display mode auto-populates defaults:
+- `flex` → `flexDirection: row`, `gap: 8`, `alignItems: stretch`, `justifyContent: flex-start`
+- `grid` → `gridColumns: 2`, `gridRows: 2`, `gap: 8`
+
 **Container — Flex mode extras:**
 
 | Field | Prop |
@@ -415,12 +445,13 @@ Available for all component types. Container-specific controls appear based on t
 
 **Container — Grid mode extras:**
 
-| Field | Prop |
-|---|---|
-| Grid columns | `gridTemplateColumns` |
-| Gap | `gap` |
-| Align items | `alignItems` |
-| Justify content | `justifyContent` |
+| Field | Prop | Notes |
+|---|---|---|
+| Rows | `gridRows` | Number of explicit rows (min 1) |
+| Columns | `gridColumns` | Number of explicit columns (min 1) |
+| Gap | `gap` | Spacing between cells (px) |
+| Align items | `alignItems` | Cell cross-axis alignment |
+| Justify content | `justifyContent` | Cell main-axis alignment |
 
 ---
 
@@ -440,7 +471,8 @@ Bottom-centre panel. Displays the full canvas state as live-updating pretty-prin
 
 - Node count badge.
 - One-click copy to clipboard with a 2-second check-mark confirmation.
-- Dark code theme.
+- **Fullscreen toggle** — expand button opens an overlay covering the full viewport. `Esc` key or the collapse button exits fullscreen. `document.body` scroll is suppressed while fullscreen is active.
+- Dark code theme (green text on near-black background).
 
 The exported schema shape:
 
@@ -448,7 +480,10 @@ The exported schema shape:
 {
   "rootIds": ["uuid1", "uuid2"],
   "nodes": {
-    "uuid1": { "id": "...", "type": "Button", "props": {}, "children": [], "parentId": null, "position": { "x": 32, "y": 32 } }
+    "uuid1": {
+      "id": "...", "type": "Button", "props": {}, "children": [],
+      "parentId": null, "position": { "x": 32, "y": 32 }
+    }
   }
 }
 ```
@@ -514,13 +549,23 @@ interface ComponentProps {
   width?              : string | number;
   height?             : string | number;
 
-  // Container layout
+  // Container layout mode
   display?            : 'block' | 'flex' | 'grid';
+
+  // Flex-specific (Container)
   flexDirection?      : 'row' | 'column';
   justifyContent?     : 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly';
   alignItems?         : 'stretch' | 'flex-start' | 'center' | 'flex-end';
   gap?                : number;
-  gridTemplateColumns?: string;
+
+  // Grid-specific — container dimensions
+  gridRows?           : number;         // Explicit row count (min 1); default 2
+  gridColumns?        : number;         // Explicit column count (min 1); default 2
+  gridTemplateColumns?: string;         // Legacy free-form override
+
+  // Grid-specific — child cell placement (set automatically on drop)
+  gridColumn?         : number;         // 1-indexed CSS grid-column for this node
+  gridRow?            : number;         // 1-indexed CSS grid-row for this node
 
   [key: string]: unknown;
 }
@@ -578,7 +623,8 @@ Snapshots are limited to **50 entries** (oldest are dropped). Any new canvas act
 | `Ctrl+Shift+Z` | Redo last undone change |
 | `Delete` / `Backspace` | Delete selected component |
 | `Enter` / `Space` | Select focused component (keyboard navigation) |
-| `Escape` | Deselect current component |
+| `Escape` | Deselect current component; also exits JSON preview fullscreen |
+| `Ctrl+click` / `Cmd+click` | Select first child of the clicked container (drill-down) |
 
 ---
 
