@@ -7,11 +7,11 @@ interface Props { node: ComponentNode; }
 
 export function StyleTab({ node }: Props) {
   const dispatch = useDispatch();
-  const isContainer = node.type === 'Container';
+  const isContainerLike = node.type === 'Container' || node.type === 'Card';
 
   return (
     <div className='space-y-3'>
-      {!isContainer && (
+      {!isContainerLike && (
         <>
           <TextField
             label='Color'
@@ -39,7 +39,7 @@ export function StyleTab({ node }: Props) {
         </>
       )}
 
-      {isContainer && (
+      {isContainerLike && (
         <>
           <TextField
             label='Background color'

@@ -12,14 +12,3 @@ export const selectNodeById = (id: string) =>
     selectNodes,
     (nodes) => nodes[id] ?? null
   );
-
-// Memoized: children array for a given parent
-export const selectChildrenOf = (parentId: string) =>
-  createSelector(
-    selectNodes,
-    (nodes) => {
-      const parent = nodes[parentId];
-      if (!parent) return [];
-      return parent.children.map(id => nodes[id]).filter(Boolean);
-    }
-  );

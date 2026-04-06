@@ -7,7 +7,7 @@ interface Props { node: ComponentNode; }
 
 export function LayoutTab({ node }: Props) {
   const dispatch = useDispatch();
-  const isContainer = node.type === 'Container';
+  const isContainerLike = node.type === 'Container' || node.type === 'Card';
   const display = node.props.display === 'flex' || node.props.display === 'grid'
     ? node.props.display
     : 'block';
@@ -53,7 +53,7 @@ export function LayoutTab({ node }: Props) {
           },
         }))}
       />
-      {isContainer && (
+      {isContainerLike && (
         <TextField
           label='Display'
           fullWidth
@@ -86,7 +86,7 @@ export function LayoutTab({ node }: Props) {
           <MenuItem value='grid'>grid</MenuItem>
         </TextField>
       )}
-      {isContainer && display === 'flex' && (
+      {isContainerLike && display === 'flex' && (
         <>
           <TextField
             label='Direction'
@@ -151,7 +151,7 @@ export function LayoutTab({ node }: Props) {
           />
         </>
       )}
-      {isContainer && display === 'grid' && (
+      {isContainerLike && display === 'grid' && (
         <>
           <TextField
             label='Rows'

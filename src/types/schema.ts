@@ -11,6 +11,8 @@ export type ComponentType =
 export interface ComponentProps {
   label?    : string;
   variant?  : string;
+  imageSrc? : string;
+  imageAlt? : string;
   color?    : string;
   fontSize? : number;
   backgroundColor?: string;

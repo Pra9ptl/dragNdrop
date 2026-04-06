@@ -34,6 +34,30 @@ export function ContentTab({ node }: Props) {
           )}
         </TextField>
       )}
+      {node.type === 'Image' && (
+        <>
+          <TextField
+            label='Image URL'
+            fullWidth
+            size='small'
+            value={String(node.props.imageSrc ?? '')}
+            onChange={e => dispatch(updateProps({
+              id: node.id,
+              props: { imageSrc: e.target.value }
+            }))}
+          />
+          <TextField
+            label='Alt text'
+            fullWidth
+            size='small'
+            value={String(node.props.imageAlt ?? '')}
+            onChange={e => dispatch(updateProps({
+              id: node.id,
+              props: { imageAlt: e.target.value }
+            }))}
+          />
+        </>
+      )}
     </div>
   );
 }

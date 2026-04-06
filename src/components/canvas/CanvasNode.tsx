@@ -91,7 +91,13 @@ function positiveInt(value: unknown): number | undefined {
   return normalized > 0 ? normalized : undefined;
 }
 
-function renderNodePreview(type: ComponentType, label: string, variant: string | undefined): ReactElement {
+function renderNodePreview(
+  type: ComponentType,
+  label: string,
+  variant: string | undefined,
+  imageSrc: string | undefined,
+  imageAlt: string | undefined
+): ReactElement {
   if (type === 'Button') {
     const buttonStyles = getButtonVariantStyles(variant);
     return (
@@ -134,6 +140,26 @@ function renderNodePreview(type: ComponentType, label: string, variant: string |
   }
 
   if (type === 'Image') {
+    const hasSrc = typeof imageSrc === 'string' && imageSrc.trim().length > 0;
+
+    if (hasSrc) {
+      return (
+        <img
+          src={imageSrc}
+          alt={imageAlt ?? label}
+          style={{
+            width: '100%',
+            height: '100%',
+            minHeight: 90,
+            objectFit: 'cover',
+            borderRadius: 6,
+            pointerEvents: 'none',
+            display: 'block',
+          }}
+        />
+      );
+    }
+
     return (
       <div
         style={{
@@ -147,6 +173,22 @@ function renderNodePreview(type: ComponentType, label: string, variant: string |
           color: 'inherit',
           fontSize: 'inherit',
           background: '#F8FAFC',
+          pointerEvents: 'none',
+        }}
+      >
+        {label}
+      </div>
+    );
+  }
+
+  if (type === 'Card') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          fontWeight: 600,
+          color: 'inherit',
+          pointerEvents: 'none',
         }}
       >
         {label}
@@ -186,7 +228,8 @@ export function CanvasNode({ id }: Props) {
     isDragging,   // true while being dragged
   } = useDraggable({ id });
 
-  const isNestTarget = node?.type === 'Container' || node?.type === 'Card';
+  const isContainerLike = node?.type === 'Container' || node?.type === 'Card';
+  const isNestTarget = isContainerLike;
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id,
     disabled: !isNestTarget,
@@ -216,29 +259,29 @@ export function CanvasNode({ id }: Props) {
     : undefined;
   const width = normalizeSizeValue(node.props.width);
   const height = normalizeSizeValue(node.props.height);
-  const display = node.type === 'Container'
+  const display = isContainerLike
     ? (node.props.display === 'flex' || node.props.display === 'grid' ? node.props.display : 'block')
     : undefined;
-  const gap = node.type === 'Container' ? toCssGap(node.props.gap) : undefined;
-  const flexDirection = node.type === 'Container' && node.props.flexDirection === 'column' ? 'column' : 'row';
-  const justifyContent = node.type === 'Container' && typeof node.props.justifyContent === 'string'
+  const gap = isContainerLike ? toCssGap(node.props.gap) : undefined;
+  const flexDirection = isContainerLike && node.props.flexDirection === 'column' ? 'column' : 'row';
+  const justifyContent = isContainerLike && typeof node.props.justifyContent === 'string'
     ? node.props.justifyContent
     : undefined;
-  const alignItems = node.type === 'Container' && typeof node.props.alignItems === 'string'
+  const alignItems = isContainerLike && typeof node.props.alignItems === 'string'
     ? node.props.alignItems
     : undefined;
-  const gridRows = node.type === 'Container' ? positiveInt(node.props.gridRows) : undefined;
-  const gridColumns = node.type === 'Container' ? positiveInt(node.props.gridColumns) : undefined;
-  const isGridContainer = node.type === 'Container' && display === 'grid';
+  const gridRows = isContainerLike ? positiveInt(node.props.gridRows) : undefined;
+  const gridColumns = isContainerLike ? positiveInt(node.props.gridColumns) : undefined;
+  const isGridContainer = isContainerLike && display === 'grid';
   const activeRect = active?.rect.current.translated ?? active?.rect.current.initial;
   const resolvedGridColumns = gridColumns ?? 2;
   const resolvedGridRows = gridRows ?? Math.max(1, Math.ceil((node.children.length + 1) / resolvedGridColumns));
-  const gridTemplateColumns = node.type === 'Container'
+  const gridTemplateColumns = isContainerLike
     ? (isGridContainer
       ? `repeat(${resolvedGridColumns}, minmax(0, 1fr))`
       : (typeof node.props.gridTemplateColumns === 'string' ? node.props.gridTemplateColumns : undefined))
     : undefined;
-  const gridTemplateRows = node.type === 'Container' && isGridContainer
+  const gridTemplateRows = isContainerLike && isGridContainer
     ? `repeat(${resolvedGridRows}, minmax(0, 1fr))`
     : undefined;
   const totalCells = Math.max(1, resolvedGridRows * resolvedGridColumns);
@@ -263,8 +306,9 @@ export function CanvasNode({ id }: Props) {
       hoverCellIndex = Math.min(totalCells - 1, Math.max(0, row * resolvedGridColumns + col));
     }
   }
-  const isInContainerFlow = parentNode?.type === 'Container';
-  const isInGridContainer = parentNode?.type === 'Container' && parentNode?.props.display === 'grid';
+  const isInContainerFlow = parentNode?.type === 'Container' || parentNode?.type === 'Card';
+  const isInGridContainer = (parentNode?.type === 'Container' || parentNode?.type === 'Card')
+    && parentNode?.props.display === 'grid';
   const childGridColumn = isInGridContainer && typeof node.props.gridColumn === 'number' ? node.props.gridColumn : undefined;
   const childGridRow    = isInGridContainer && typeof node.props.gridRow    === 'number' ? node.props.gridRow    : undefined;
  
@@ -283,17 +327,11 @@ export function CanvasNode({ id }: Props) {
     }
   }
 
-  // ─── Click handler with Ctrl+click drill-down ────────
+  // ─── Click handler ───────────────────────────────────
   function handleClick(e: MouseEvent<HTMLDivElement>) {
-    if (e.ctrlKey || e.metaKey) {
-      // Ctrl/Cmd+click: select first child if this node has children
-      if (node.children.length > 0) {
-        dispatch(selectNode(node.children[0]));
-      }
-    } else {
-      // Normal click: select this node
-      dispatch(selectNode(id));
-    }
+    // Stop bubbling so parent CanvasNode handlers cannot override child selection.
+    e.stopPropagation();
+    dispatch(selectNode(id));
   }
  
   // ─── Styles ──────────────────────────────────────────
@@ -349,7 +387,7 @@ export function CanvasNode({ id }: Props) {
       // ── Accessibility attributes ──────────────────────
       role='button'
       tabIndex={0}
-      aria-label={`${node.type} component. ${isSelected ? 'Selected.' : 'Press Enter to select.'} ${node.children.length > 0 ? 'Ctrl+click to drill into children.' : ''} Press Delete to remove.`}
+      aria-label={`${node.type} component. ${isSelected ? 'Selected.' : 'Press Enter to select.'} Press Delete to remove.`}
       aria-selected={isSelected}
       aria-grabbed={isDragging}
       // ── Event handlers ────────────────────────────────
@@ -357,7 +395,13 @@ export function CanvasNode({ id }: Props) {
       onClick={handleClick}
     >
       <div>
-        {renderNodePreview(node.type, label, typeof node.props.variant === 'string' ? node.props.variant : undefined)}
+        {renderNodePreview(
+          node.type,
+          label,
+          typeof node.props.variant === 'string' ? node.props.variant : undefined,
+          typeof node.props.imageSrc === 'string' ? node.props.imageSrc : undefined,
+          typeof node.props.imageAlt === 'string' ? node.props.imageAlt : undefined
+        )}
       </div>
       {isGridContainer && isOver && (
         <div

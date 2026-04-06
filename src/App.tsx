@@ -1,5 +1,5 @@
 import { Provider }           from 'react-redux';
-import { DndContext, DragOverlay, type DragCancelEvent, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
 import { useDispatch, useSelector } from 'react-redux';
 import { store }              from './store';
 import { Canvas }             from './components/canvas/Canvas';
@@ -32,7 +32,6 @@ function AppInner() {
   const sensors = useCanvasSensors();
   const rootIds = useSelector((state: RootState) => state.canvas.rootIds);
   const nodes = useSelector((state: RootState) => state.canvas.nodes);
-  const activeDragRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [activePaletteType, setActivePaletteType] = useState<ComponentType | null>(null);
 
@@ -100,7 +99,9 @@ function AppInner() {
     }
 
     const parentNode = nodes[parentId];
-    const isGridParent = parentNode?.type === 'Container' && parentNode?.props.display === 'grid';
+    const isGridParent =
+      (parentNode?.type === 'Container' || parentNode?.type === 'Card')
+      && parentNode?.props.display === 'grid';
 
     if (!parentNode) {
       return { parentId, newIndex: 0, position, gridCell: null };
@@ -139,18 +140,7 @@ function AppInner() {
     return { parentId, newIndex, position: gridPosition, gridCell: { col: col + 1, row: row + 1 } };
   }
 
-  function handleDragMove(event: DragMoveEvent) {
-    const { active, delta } = event;
-
-    activeDragRef.current = {
-      id: String(active.id),
-      x: delta.x,
-      y: delta.y,
-    };
-  }
-
-  function resetActiveDrag(_: DragCancelEvent | DragEndEvent) {
-    activeDragRef.current = null;
+  function resetActiveDrag() {
     setActivePaletteType(null);
   }
 
@@ -175,7 +165,7 @@ function AppInner() {
         }
       }
 
-      resetActiveDrag(event);
+      resetActiveDrag();
       return;
     }
 
@@ -194,7 +184,7 @@ function AppInner() {
       }
     }
 
-    resetActiveDrag(event);
+    resetActiveDrag();
   }
  
   return (
@@ -203,7 +193,6 @@ function AppInner() {
       modifiers={[snapToGrid]}
       collisionDetection={nestingCollisionDetection}
       onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
       onDragCancel={resetActiveDrag}
       onDragEnd={handleDragEnd}
     >
