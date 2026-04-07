@@ -1,11 +1,14 @@
+export const COMPONENT_TYPES = [
+  'Button',
+  'Text',
+  'Input',
+  'Card',
+  'Container',
+  'Image',
+] as const;
+
 // Every component type that can exist on the canvas
-export type ComponentType =
-  | 'Button'
-  | 'Text'
-  | 'Input'
-  | 'Card'
-  | 'Container'
-  | 'Image';
+export type ComponentType = (typeof COMPONENT_TYPES)[number];
  
 // The props a component can have
 export interface ComponentProps {

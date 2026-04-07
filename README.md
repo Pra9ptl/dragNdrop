@@ -669,6 +669,47 @@ npm run preview
 npm run lint
 ```
 
+### AI Assistant (CopilotKit)
+
+CanvasIQ now includes a floating AI assistant drawer powered by CopilotKit.
+
+Configure runtime access in a local `.env` file:
+
+```bash
+VITE_COPILOT_RUNTIME_URL=http://localhost:4000/copilotkit
+VITE_COPILOT_AGENT=canvasiq-assistant
+# Optional: only needed when using Copilot Cloud features
+VITE_COPILOT_PUBLIC_API_KEY=
+
+# Backend runtime (required to avoid ERR_CONNECTION_REFUSED)
+OPENAI_API_KEY=
+COPILOT_BACKEND_PORT=4000
+FRONTEND_ORIGIN=http://localhost:5173
+COPILOT_MODEL=gpt-4o-mini
+```
+
+Run backend runtime (terminal 1):
+
+```bash
+npm run backend
+```
+
+Run frontend (terminal 2):
+
+```bash
+npm run dev
+```
+
+If you see `ERR_CONNECTION_REFUSED`, verify that `http://localhost:4000/health` returns `{ "ok": true }` and that `VITE_COPILOT_RUNTIME_URL` points to `http://localhost:4000/copilotkit`.
+
+Interview demo flow:
+
+1. Click **Open AI Assistant** in the top bar.
+2. Ask for a placement idea (for example, “Place a CTA button below the selected card”).
+3. The agent proposes a placement card in chat via a frontend tool call.
+4. Click **Confirm placement** to apply or **Dismiss** to reject.
+5. Use `Ctrl+Z` / `Ctrl+Shift+Z` to demonstrate undo/redo for AI-applied changes.
+
 ---
 
 > CanvasIQ v1.0 · React 19 · TypeScript · Vite · Redux Toolkit · dnd-kit · MUI · Tailwind CSS

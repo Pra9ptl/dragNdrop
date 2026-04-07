@@ -3,16 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useDispatch, useSelector } from 'react-redux';
 import { addNode } from '../../store/slices/canvasSlice';
 import type { RootState } from '../../store';
-import type { ComponentType } from '../../types/schema';
-
-const COMPONENT_TYPES: ComponentType[] = [
-  'Button',
-  'Text',
-  'Input',
-  'Card',
-  'Container',
-  'Image',
-];
+import { COMPONENT_TYPES, type ComponentType } from '../../types/schema';
 
 function PaletteItem({ type, index }: { type: ComponentType; index: number }) {
   const dispatch = useDispatch();

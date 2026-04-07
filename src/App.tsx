@@ -5,8 +5,8 @@ import { store }              from './store';
 import { Canvas }             from './components/canvas/Canvas';
 import { Inspector }          from './components/inspector/Inspector';
 import { JsonPreview }        from './components/JsonPreview';
-import { PerformanceOverlay } from './components/canvas/PerformanceOverlay';
 import { ComponentPalette }   from './components/ui/ComponentPalette';
+import { AiAssistantDrawer }  from './components/ui/AiAssistantDrawer';
 import { nestingCollisionDetection } from './dnd/collision';
 import { snapToGrid }         from './dnd/modifires';
 import { useCanvasSensors }   from './dnd/sensor';
@@ -34,6 +34,8 @@ function AppInner() {
   const nodes = useSelector((state: RootState) => state.canvas.nodes);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [activePaletteType, setActivePaletteType] = useState<ComponentType | null>(null);
+  const [schemaOpen, setSchemaOpen] = useState(true);
+  const [leftTab, setLeftTab] = useState<'library' | 'assistant'>('library');
 
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
@@ -227,6 +229,25 @@ function AppInner() {
           <span style={{ fontSize: 12, color: '#93C5FD' }}>
             Ctrl+Z undo  ·  Ctrl+Shift+Z redo  ·  Delete removes selected
           </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type='button'
+              onClick={() => setSchemaOpen((prev) => !prev)}
+              style={{
+                border: '1px solid rgba(147, 197, 253, 0.5)',
+                background: schemaOpen ? '#0ea5e9' : 'rgba(14, 165, 233, 0.16)',
+                color: '#ffffff',
+                borderRadius: 8,
+                height: 30,
+                padding: '0 10px',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {schemaOpen ? 'Hide Live Schema' : 'Show Live Schema'}
+            </button>
+          </div>
         </header>
  
         {/* ── THREE-COLUMN MAIN AREA ──────────────────── */}
@@ -234,7 +255,7 @@ function AppInner() {
  
           {/* LEFT: Component library */}
           <aside style={{
-            width      : 224,
+            width      : 320,
             background : '#ffffff',
             borderRight: '1px solid #e5e7eb',
             display    : 'flex',
@@ -242,14 +263,50 @@ function AppInner() {
             flexShrink : 0,
             overflow   : 'hidden',
           }}>
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280',
-                             textTransform: 'uppercase', letterSpacing: 1 }}>
-                Component Library
-              </span>
+            <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 8 }}>
+              <button
+                type='button'
+                onClick={() => setLeftTab('library')}
+                style={{
+                  flex: 1,
+                  border: '1px solid #cbd5e1',
+                  background: leftTab === 'library' ? '#dbeafe' : '#ffffff',
+                  color: leftTab === 'library' ? '#1d4ed8' : '#334155',
+                  borderRadius: 8,
+                  height: 32,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Components
+              </button>
+              <button
+                type='button'
+                onClick={() => setLeftTab('assistant')}
+                style={{
+                  flex: 1,
+                  border: '1px solid #cbd5e1',
+                  background: leftTab === 'assistant' ? '#dbeafe' : '#ffffff',
+                  color: leftTab === 'assistant' ? '#1d4ed8' : '#334155',
+                  borderRadius: 8,
+                  height: 32,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                AI Assistant
+              </button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-              <ComponentPalette />
+            <div style={{ flex: 1, overflow: 'hidden', padding: 8 }}>
+              {leftTab === 'library' ? (
+                <div style={{ height: '100%', overflowY: 'auto' }}>
+                  <ComponentPalette />
+                </div>
+              ) : (
+                <AiAssistantDrawer open={true} embedded onClose={() => setLeftTab('library')} />
+              )}
             </div>
           </aside>
  
@@ -258,17 +315,23 @@ function AppInner() {
                          flex: 1, overflow: 'hidden' }}>
  
             {/* Canvas — 65% of the centre column height */}
-            <div style={{ flex: '0 0 65%', position: 'relative', overflow: 'hidden',
-                          borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{
+              flex: schemaOpen ? '0 0 65%' : 1,
+              position: 'relative',
+              overflow: 'hidden',
+              borderBottom: schemaOpen ? '1px solid #e5e7eb' : 'none',
+            }}>
               <Canvas setCanvasElement={(node) => {
                 canvasRef.current = node;
               }} />
             </div>
  
             {/* JSON Preview — remaining 35% */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <JsonPreview />
-            </div>
+            {schemaOpen ? (
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <JsonPreview />
+              </div>
+            ) : null}
           </main>
  
           {/* RIGHT: Property Inspector */}
@@ -283,8 +346,6 @@ function AppInner() {
           </aside>
         </div>
  
-        {/* Floating FPS badge — always on top */}
-        <PerformanceOverlay />
       </div>
       <DragOverlay>
         {activePaletteType ? <PaletteDragPreview type={activePaletteType} /> : null}
