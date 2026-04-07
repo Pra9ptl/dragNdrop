@@ -23,11 +23,11 @@
    - [Canvas](#canvas)
    - [CanvasNode](#canvasnode)
    - [ComponentPalette](#componentpalette)
+  - [AiAssistantDrawer](#aiassistantdrawer)
    - [Inspector](#inspector)
    - [ContentTab](#contenttab)
    - [StyleTab](#styletab)
    - [LayoutTab](#layouttab)
-   - [LayerItem](#layeritem)
    - [JsonPreview](#jsonpreview)
    - [PerformanceOverlay](#performanceoverlay)
 8. [Data Schema](#data-schema)
@@ -96,13 +96,15 @@ src/
 │       ├── canvasSlice.ts     # Nodes state: add, move, updateProps, delete
 │       ├── selectionSlice.ts  # Currently selected node ID
 │       ├── historySlice.ts    # Undo/redo past/future stacks
-│       └── dragSlice.ts       # (reserved, currently empty)
 │
 ├── selectors/
-│   └── canvasSelectors.ts     # selectNodeById, selectChildrenOf
+│   └── canvasSelectors.ts     # Memoized node lookup helpers
 │
 ├── hooks/
 │   └── useUndoRedo.ts         # Keyboard listener for Ctrl+Z / Ctrl+Shift+Z
+│
+├── ai/
+│   └── placement.ts           # Validates and applies AI placement suggestions
 │
 ├── dnd/
 │   ├── collision.ts           # nestingCollisionDetection — smallest-area heuristic
@@ -121,10 +123,9 @@ src/
     │       ├── ContentTab.tsx  # Label, variant editing
     │       ├── StyleTab.tsx    # Color/font for others; bg/border/shadow for Container
     │       └── LayoutTab.tsx   # W/H/Padding + display mode + flex/grid controls
-    ├── layers/
-    │   └── LayerItem.tsx       # Recursive sortable layer tree item
     └── ui/
-        └── ComponentPalette.tsx  # Left-panel draggable component library
+      ├── ComponentPalette.tsx   # Left-panel draggable component library
+      └── AiAssistantDrawer.tsx  # Embedded CopilotKit assistant tab
 ```
 
 ---
@@ -136,13 +137,13 @@ src/
 │                        App.tsx                           │
 │  DndContext (sensors, modifiers, collision, handlers)    │
 │                                                          │
-│  ┌──────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │ Palette  │  │     Canvas       │  │   Inspector   │  │
-│  │ (left)   │  │  (centre-top)    │  │   (right)     │  │
-│  └──────────┘  ├──────────────────┤  └───────────────┘  │
-│                │   JSON Preview   │                      │
-│                │  (centre-bottom) │                      │
-│                └──────────────────┘                      │
+│  ┌────────────────┐ ┌──────────────────┐ ┌─────────────┐ │
+│  │ Left Sidebar   │ │     Canvas       │ │  Inspector  │ │
+│  │ - Library tab  │ │   (centre-top)   │ │   (right)   │ │
+│  │ - Assistant tab│ ├──────────────────┤ └─────────────┘ │
+│  └────────────────┘ │   JSON Preview   │                 │
+│                     │ (toggleable pane) │                 │
+│                     └──────────────────┘                 │
 └──────────────────────────────────────────────────────────┘
                           │  dispatch
                           ▼
@@ -157,6 +158,14 @@ src/
 ```
 
 Data flows in one direction: user interactions dispatch Redux actions → store updates → React components re-render via `useSelector`.
+
+The AI assistant follows the same state path as manual edits:
+
+1. `AiAssistantDrawer` publishes a compact `canvasStructure` tree to CopilotKit.
+2. The model calls `suggest_component_placement` with a proposed action.
+3. The UI renders a confirmation card instead of applying the change immediately.
+4. On confirm, `applyPlacementSuggestion()` dispatches the same Redux actions used by drag-and-drop.
+5. The result is undoable through the normal history pipeline.
 
 ---
 
@@ -303,10 +312,17 @@ Non-grid drops return `gridCell: null` so no cell props are written.
 Root application shell. Houses the `DndContext` with all sensors, modifiers, and event handlers. Renders a three-column layout:
 
 ```
-[ Component Library ] [ Canvas + JSON Preview ] [ Inspector ]
+[ Library or AI Assistant ] [ Canvas + JSON Preview ] [ Inspector ]
 ```
 
-Contains `AppInner` (inside Redux `Provider`) and the `PaletteDragPreview` overlay shown during palette element drag.
+Key responsibilities:
+
+- Switches the left sidebar between `ComponentPalette` and `AiAssistantDrawer`.
+- Toggles the live JSON schema pane on and off.
+- Resolves drop targets for root, nested, flex, and grid placements.
+- Shows a drag overlay preview while a palette item is being dragged.
+
+Contains `AppInner` (inside Redux `Provider`) and the drag overlay preview shown during palette element drag.
 
 ---
 
@@ -357,6 +373,27 @@ Left panel list of all available component types. Each item is:
 - **Clickable** — also adds the component directly to canvas root at a staggered position.
 
 Available types: `Button`, `Text`, `Input`, `Card`, `Container`, `Image`.
+
+This component is shown when the left sidebar is on the `Library` tab.
+
+---
+
+### AiAssistantDrawer
+
+`src/components/ui/AiAssistantDrawer.tsx`
+
+CopilotKit-powered assistant panel embedded in the left sidebar. It does not mutate the canvas directly on model output; instead it enforces a human-in-the-loop workflow.
+
+Main responsibilities:
+
+- Publishes `readableCanvas` metadata, including `canvasStructure`, to the model.
+- Registers the `suggest_component_placement` tool.
+- Normalises tool arguments with `parseSuggestion()`.
+- Applies confirmed suggestions through `src/ai/placement.ts`.
+- Surfaces backend and quota errors in a user-readable format.
+- Supports `New chat`, which clears both the conversation and suggestion state.
+
+The assistant is shown when the left sidebar is on the `AI Assistant` tab.
 
 ---
 
@@ -452,14 +489,6 @@ Switching display mode auto-populates defaults:
 | Gap | `gap` | Spacing between cells (px) |
 | Align items | `alignItems` | Cell cross-axis alignment |
 | Justify content | `justifyContent` | Cell main-axis alignment |
-
----
-
-### LayerItem
-
-`src/components/layers/LayerItem.tsx`
-
-Recursive tree item for a layer panel. Uses `useSortable` from @dnd-kit/sortable to support reordering. Shows component type, short ID, expand/collapse toggle for nodes with children, and indents visually per nesting depth.
 
 ---
 
@@ -609,7 +638,6 @@ Snapshots are limited to **50 entries** (oldest are dropped). Any new canvas act
 | Selector | Returns |
 |---|---|
 | `selectNodeById(id)` | Memoised `ComponentNode \| null` for a given ID |
-| `selectChildrenOf(parentId)` | Memoised array of child `ComponentNode` objects |
 
 `CanvasNode` also creates its own local `makeSelectNode(id)` via `createSelector` inside `useMemo` so each node component subscribes only to its own slice of the nodes map — preventing unnecessary re-renders when unrelated nodes change.
 
@@ -624,7 +652,7 @@ Snapshots are limited to **50 entries** (oldest are dropped). Any new canvas act
 | `Delete` / `Backspace` | Delete selected component |
 | `Enter` / `Space` | Select focused component (keyboard navigation) |
 | `Escape` | Deselect current component; also exits JSON preview fullscreen |
-| `Ctrl+click` / `Cmd+click` | Select first child of the clicked container (drill-down) |
+| `Ctrl+Y` | Redo on Windows-style shortcut |
 
 ---
 
@@ -671,7 +699,7 @@ npm run lint
 
 ### AI Assistant (CopilotKit)
 
-CanvasIQ now includes a floating AI assistant drawer powered by CopilotKit.
+CanvasIQ includes an embedded AI assistant tab powered by CopilotKit.
 
 Configure runtime access in a local `.env` file:
 
@@ -704,7 +732,7 @@ If you see `ERR_CONNECTION_REFUSED`, verify that `http://localhost:4000/health` 
 
 Interview demo flow:
 
-1. Click **Open AI Assistant** in the top bar.
+1. Open the **AI Assistant** tab in the left sidebar.
 2. Ask for a placement idea (for example, “Place a CTA button below the selected card”).
 3. The agent proposes a placement card in chat via a frontend tool call.
 4. Click **Confirm placement** to apply or **Dismiss** to reject.

@@ -1,3 +1,9 @@
+/**
+ * ContentTab - Content-oriented inspector controls
+ *
+ * This tab only exposes props that affect what a component says or displays,
+ * not how it is laid out. The available fields vary by component type.
+ */
 import { MenuItem, TextField } from '@mui/material';
 import { useDispatch } from 'react-redux';
 import { updateProps } from '../../../store/slices/canvasSlice';
@@ -7,6 +13,7 @@ interface Props { node: ComponentNode; }
 
 export function ContentTab({ node }: Props) {
   const dispatch = useDispatch();
+  // Containers are structural only, so they intentionally do not expose a label field.
   const showLabelField = node.type !== 'Container';
 
   return (
@@ -22,6 +29,7 @@ export function ContentTab({ node }: Props) {
         />
       )}
       {node.type === 'Button' && (
+        // Button variant maps directly to the preview styling in CanvasNode.
         <TextField
           label='Variant' fullWidth size='small' select
           value={node.props.variant ?? 'contained'}
@@ -35,6 +43,7 @@ export function ContentTab({ node }: Props) {
         </TextField>
       )}
       {node.type === 'Image' && (
+        // Images need both source and alt text so preview and accessibility stay in sync.
         <>
           <TextField
             label='Image URL'

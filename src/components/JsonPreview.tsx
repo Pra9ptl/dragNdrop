@@ -1,3 +1,13 @@
+/**
+ * components/JsonPreview.tsx - Live JSON view of the current canvas schema
+ *
+ * This panel mirrors the Redux canvas state as formatted JSON so users can see
+ * the exact structure being built: rootIds plus the flat nodes map.
+ *
+ * It supports two convenience features:
+ * - copy to clipboard for quick export/debugging
+ * - fullscreen mode for inspecting larger trees
+ */
 import { useEffect, useState }  from 'react';
 import { useSelector }          from 'react-redux';
 import IconButton               from '@mui/material/IconButton';
@@ -12,7 +22,7 @@ export function JsonPreview() {
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
  
-  // Read directly from Redux — updates live on every change
+  // Read live canvas state so the preview updates immediately after any mutation.
   const nodes   = useSelector((s: RootState) => s.canvas.nodes);
   const rootIds = useSelector((s: RootState) => s.canvas.rootIds);
  
@@ -20,6 +30,7 @@ export function JsonPreview() {
   const jsonText = JSON.stringify(schema, null, 2);
   const nodeCount = Object.keys(nodes).length;
  
+  // Clipboard feedback is temporary so the user gets visual confirmation.
   async function handleCopy() {
     await navigator.clipboard.writeText(jsonText);
     setCopied(true);
@@ -27,6 +38,7 @@ export function JsonPreview() {
   }
 
   useEffect(() => {
+    // Escape is the expected way to close fullscreen panels.
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsFullscreen(false);
@@ -40,6 +52,7 @@ export function JsonPreview() {
   useEffect(() => {
     if (!isFullscreen) return;
 
+    // Prevent background page scrolling while preview is fullscreen.
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
@@ -64,7 +77,7 @@ export function JsonPreview() {
         : {}),
     }}>
  
-      {/* Top bar with title and copy button */}
+      {/* Header with schema metadata and actions. */}
       <div style={{
         display       : 'flex',
         alignItems    : 'flex-start',
@@ -104,7 +117,7 @@ export function JsonPreview() {
         </div>
       </div>
  
-      {/* JSON output area */}
+      {/* Preformatted output keeps the structure readable and copy-friendly. */}
       <pre style={{
         flex      : 1,
         overflow  : 'auto',

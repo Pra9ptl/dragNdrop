@@ -1,3 +1,10 @@
+/**
+ * LayoutTab - Size and layout controls for the selected component
+ *
+ * This tab is where components switch between block, flex, and grid behavior.
+ * When display mode changes, sensible defaults are written so the new mode is
+ * immediately usable without requiring several additional edits.
+ */
 import { MenuItem, TextField } from '@mui/material';
 import { useDispatch } from 'react-redux';
 import { updateProps } from '../../../store/slices/canvasSlice';
@@ -7,7 +14,9 @@ interface Props { node: ComponentNode; }
 
 export function LayoutTab({ node }: Props) {
   const dispatch = useDispatch();
+  // Cards behave like containers for layout purposes.
   const isContainerLike = node.type === 'Container' || node.type === 'Card';
+  // The preview code treats invalid/empty display values as block.
   const display = node.props.display === 'flex' || node.props.display === 'grid'
     ? node.props.display
     : 'block';
@@ -54,6 +63,7 @@ export function LayoutTab({ node }: Props) {
         }))}
       />
       {isContainerLike && (
+        // Changing display seeds layout-specific defaults to avoid empty, broken states.
         <TextField
           label='Display'
           fullWidth
@@ -87,6 +97,7 @@ export function LayoutTab({ node }: Props) {
         </TextField>
       )}
       {isContainerLike && display === 'flex' && (
+        // Flex controls are only relevant while the component is in flex mode.
         <>
           <TextField
             label='Direction'
@@ -152,6 +163,7 @@ export function LayoutTab({ node }: Props) {
         </>
       )}
       {isContainerLike && display === 'grid' && (
+        // Grid controls are shown only for grid containers and keep row/column counts positive.
         <>
           <TextField
             label='Rows'

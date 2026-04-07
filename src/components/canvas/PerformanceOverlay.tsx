@@ -1,10 +1,17 @@
+/**
+ * components/canvas/PerformanceOverlay.tsx - Lightweight FPS monitor
+ *
+ * This component samples requestAnimationFrame once per frame and publishes a
+ * rounded FPS value once per second. It is intentionally simple and cheap so it
+ * can stay mounted during canvas interaction without distorting the numbers.
+ */
 import { useEffect, useRef, useState } from 'react';
  
 export function PerformanceOverlay() {
   const [fps, setFps]   = useState(60);
-  const frameCount      = useRef(0);           // how many frames since last check
-  const lastTime        = useRef(performance.now()); // timestamp of last check
-  const rafId           = useRef(0);           // animation frame ID (for cleanup)
+  const frameCount      = useRef(0);                  // frames accumulated in the current sample window
+  const lastTime        = useRef(performance.now());  // timestamp of last FPS commit
+  const rafId           = useRef(0);                  // current RAF id for cleanup
  
   useEffect(() => {
     function tick() {
@@ -12,22 +19,22 @@ export function PerformanceOverlay() {
       const now     = performance.now();
       const elapsed = now - lastTime.current;
  
-      // Once a full second has passed, calculate and display FPS
+      // Update React state only once per second to keep this overlay low-overhead.
       if (elapsed >= 1000) {
         const currentFps = Math.round((frameCount.current * 1000) / elapsed);
-        setFps(currentFps);          // this is the only setState call — once/second
+        setFps(currentFps);
         frameCount.current = 0;
         lastTime.current   = now;
       }
  
-      rafId.current = requestAnimationFrame(tick); // schedule next frame
+      rafId.current = requestAnimationFrame(tick);
     }
  
-    rafId.current = requestAnimationFrame(tick); // start the loop
-    return () => cancelAnimationFrame(rafId.current); // cleanup on unmount
+    rafId.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId.current);
   }, []);
  
-  // Green = good (55+), Yellow = ok (40+), Red = poor
+  // Simple color bands are enough to spot obvious regressions while dragging.
   const color =
     fps >= 55 ? '#22c55e' :
     fps >= 40 ? '#f59e0b' :
@@ -46,7 +53,7 @@ export function PerformanceOverlay() {
       fontFamily  : 'monospace',
       fontSize    : 13,
       fontWeight  : 'bold',
-      pointerEvents: 'none',   // won't block any clicks or drags
+      pointerEvents: 'none',
       userSelect  : 'none',
     }}>
       {fps} FPS

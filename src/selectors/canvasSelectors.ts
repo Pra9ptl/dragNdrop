@@ -1,12 +1,17 @@
-// selectors/canvasSelectors.ts
+/**
+ * selectors/canvasSelectors.ts - Memoized selectors for canvas lookups
+ *
+ * The inspector frequently needs the currently selected node. Returning a new
+ * selector per id keeps lookups cheap and avoids recomputing unrelated nodes.
+ */
 import { createSelector } from 'reselect';
 import type { RootState } from '../store';
 
-// Base selector — no memoization needed
+// Base selector for the flat node map.
 const selectNodes = (state: RootState) => state.canvas.nodes;
 
-// Memoized: only re-runs when nodes[id] changes
-// This means dragging node A won't re-render node B
+// Factory selector: each caller gets a memoized selector bound to a specific id.
+// That means reading node A does not cause recalculation for node B.
 export const selectNodeById = (id: string) =>
   createSelector(
     selectNodes,

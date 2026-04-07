@@ -1,3 +1,14 @@
+/**
+ * components/ui/AiAssistantDrawer.tsx - Embedded CopilotKit assistant for layout help
+ *
+ * This component exposes a structured view of the canvas to the model, defines
+ * the `suggest_component_placement` tool, and keeps a human confirmation step
+ * between AI suggestions and actual canvas mutations.
+ *
+ * Two render modes are supported:
+ * - floating drawer: legacy overlay panel
+ * - embedded panel: left-sidebar tab inside the main app layout
+ */
 import { CopilotChat } from '@copilotkit/react-ui';
 import { useCopilotAction, useCopilotChatHeadless_c, useCopilotReadable } from '@copilotkit/react-core';
 import { useMemo, useState, type CSSProperties } from 'react';
@@ -13,6 +24,7 @@ interface AiAssistantDrawerProps {
   embedded?: boolean;
 }
 
+// Extract a useful message from CopilotKit/OpenAI errors, which can be nested objects.
 function extractErrorMessage(error: unknown): string {
   if (typeof error === 'string') return error;
 
@@ -55,6 +67,7 @@ function extractErrorMessage(error: unknown): string {
 function toUserFacingErrorMessage(error: unknown): string {
   const rawMessage = extractErrorMessage(error);
 
+  // Quota failures are common during local setup, so surface a direct explanation.
   if (rawMessage.includes('429') || rawMessage.toLowerCase().includes('quota')) {
     return 'OpenAI quota exceeded. The assistant cannot generate placements until the API key has available credits.';
   }
@@ -62,6 +75,8 @@ function toUserFacingErrorMessage(error: unknown): string {
   return rawMessage;
 }
 
+// Convert raw tool args into the internal PlacementSuggestion structure.
+// This normalizes canvas-root/null parent references and component type casing.
 function parseSuggestion(args: Record<string, unknown>): PlacementSuggestion {
   const mode = args.mode === 'move' ? 'move' : 'create';
   const targetParentIdRaw = typeof args.targetParentId === 'string' ? args.targetParentId.trim() : '';
@@ -148,6 +163,7 @@ function PlacementToolCard({
       {confirmed ? (
         <div style={confirmedTextStyle}>Placement confirmation submitted.</div>
       ) : (
+        // Suggestions are never auto-applied; user confirmation is required.
         <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
           <button
             type='button'
@@ -175,11 +191,12 @@ export function AiAssistantDrawer({ open, onClose, embedded = false }: AiAssista
   const selectedId = useSelector((state: RootState) => state.selection.selectedId);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [chatSessionKey, setChatSessionKey] = useState(0);
+  // Headless chat helpers let the New chat button clear the conversation state cleanly.
   const { reset, resetSuggestions } = useCopilotChatHeadless_c();
 
   const selectedNode = selectedId ? nodes[selectedId] : null;
 
-  // Build a tree representation of the canvas for the AI to understand structure
+  // Expose a compact tree so the model can reason about nesting and target real ids.
   function buildCanvasTree(nodeId: string): Record<string, unknown> {
     const node = nodes[nodeId];
     if (!node) return {};
@@ -215,6 +232,7 @@ export function AiAssistantDrawer({ open, onClose, embedded = false }: AiAssista
     [nodes, rootIds.length, selectedId, selectedNode?.type, canvasTree],
   );
 
+  // Publish the current canvas summary into CopilotKit context on every relevant change.
   useCopilotReadable(
     {
       description: 'CanvasIQ canvas summary and current selection.',
@@ -223,6 +241,7 @@ export function AiAssistantDrawer({ open, onClose, embedded = false }: AiAssista
     [readableCanvas],
   );
 
+  // Register the single tool the assistant is allowed to call for layout changes.
   useCopilotAction({
     name: 'suggest_component_placement',
     description:
@@ -249,6 +268,8 @@ export function AiAssistantDrawer({ open, onClose, embedded = false }: AiAssista
           onConfirm={() => {
             try {
               const suggestion = parseSuggestion(parsedArgs);
+              // Read the latest store state at confirmation time so the action uses
+              // current ids/parents rather than stale values captured during render.
               const latestState = store.getState();
               const result = applyPlacementSuggestion(
                 dispatch,
@@ -278,6 +299,7 @@ export function AiAssistantDrawer({ open, onClose, embedded = false }: AiAssista
     },
   }, [dispatch]);
 
+  // In embedded mode this panel is always rendered; floating mode respects the open flag.
   if (!open && !embedded) return null;
 
   return (
@@ -293,6 +315,7 @@ export function AiAssistantDrawer({ open, onClose, embedded = false }: AiAssista
             <button
               type='button'
               onClick={() => {
+                // Reset both messages and CopilotKit suggestion chips.
                 reset();
                 resetSuggestions();
                 setChatSessionKey((prev) => prev + 1);

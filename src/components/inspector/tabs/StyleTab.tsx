@@ -1,3 +1,9 @@
+/**
+ * StyleTab - Visual styling controls for the selected component
+ *
+ * Leaf components expose text-centric styling, while Container/Card expose box
+ * styling that affects their child layout region.
+ */
 import { MenuItem, TextField } from '@mui/material';
 import { useDispatch } from 'react-redux';
 import { updateProps } from '../../../store/slices/canvasSlice';
@@ -7,11 +13,13 @@ interface Props { node: ComponentNode; }
 
 export function StyleTab({ node }: Props) {
   const dispatch = useDispatch();
+  // Containers and cards share the same box-model styling controls.
   const isContainerLike = node.type === 'Container' || node.type === 'Card';
 
   return (
     <div className='space-y-3'>
       {!isContainerLike && (
+        // Text color and font size are only meaningful for leaf-style components.
         <>
           <TextField
             label='Color'
@@ -40,6 +48,7 @@ export function StyleTab({ node }: Props) {
       )}
 
       {isContainerLike && (
+        // Box appearance fields shape the visible frame and background of layout parents.
         <>
           <TextField
             label='Background color'
